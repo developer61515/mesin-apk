@@ -1,0 +1,61 @@
+name: Build APK
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Nama Aplikasi'
+        required: true
+        default: 'Aplikasi Ku'
+      app_url:
+        description: 'URL Website'
+        required: true
+        default: 'https://google.com'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Build Android App via Capacitor
+        run: |
+          mkdir myapp && cd myapp
+          npm init -y
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          
+          # Konfigurasi Capacitor untuk me-load website kamu sebagai Aplikasi (WebView native)
+          cat <<EOF > capacitor.config.json
+          {
+            "appId": "com.web2apk.app",
+            "appName": "${{ github.event.inputs.app_name }}",
+            "webDir": "www",
+            "server": {
+              "url": "${{ github.event.inputs.app_url }}",
+              "cleartext": true
+            }
+          }
+          EOF
+          
+          mkdir www && echo "Loading..." > www/index.html
+          npx cap add android
+          npx cap sync android
+          
+          # Mulai proses Build Gradle (Membuat APK)
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload Hasil APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ github.event.inputs.app_name }}-APK
+          path: myapp/android/app/build/outputs/apk/debug/app-debug.apk
