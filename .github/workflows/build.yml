@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK Pro
 on:
   workflow_dispatch:
     inputs:
@@ -15,9 +15,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
-        
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -27,27 +24,35 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
+
+      - name: Persiapan Pengaman RAM & Gradle
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8" > ~/.gradle/gradle.properties
+          echo "org.gradle.daemon=false" >> ~/.gradle/gradle.properties
 
       - name: Install & Build Android
         run: |
           mkdir myapp && cd myapp
           npm init -y
-          npm install @capacitor/core
-          npm install -D @capacitor/cli
           
-          # Membuat folder web dasar
-          mkdir www
-          echo "Memuat Aplikasi..." > www/index.html
+          # Kunci versi & cegah konflik dependency
+          npm install @capacitor/core@5 @capacitor/android@5 --legacy-peer-deps
+          npm install -D @capacitor/cli@5 --legacy-peer-deps
           
-          # Setup Capacitor
-          npx cap init "${{ github.event.inputs.app_name }}" "com.web2apk.studio" --web-dir www
+          # Sanitasi Nama Aplikasi (Hapus simbol yang bisa merusak Android String XML)
+          SAFE_APP_NAME=$(echo "${{ github.event.inputs.app_name }}" | sed 's/[^a-zA-Z0-9 ]//g')
+          if [ -z "$SAFE_APP_NAME" ]; then SAFE_APP_NAME="MyApp"; fi
           
-          # Hubungkan APK ke URL Web Kamu
+          mkdir -p www
+          echo "Memuat $SAFE_APP_NAME..." > www/index.html
+          
+          # Gunakan konfigurasi JSON yang kebal error syntax
           cat <<EOF > capacitor.config.json
           {
             "appId": "com.web2apk.studio",
-            "appName": "${{ github.event.inputs.app_name }}",
+            "appName": "$SAFE_APP_NAME",
             "webDir": "www",
             "server": {
               "url": "${{ github.event.inputs.app_url }}",
@@ -56,15 +61,16 @@ jobs:
           }
           EOF
           
-          # Tambah sistem Android dan Compile APK
-          npm install @capacitor/android
           npx cap add android
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          
+          # Compile tanpa daemon agar tidak crash karena kehabisan RAM di cloud
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload Hasil APK
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.app_name }}-APK
           path: myapp/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 3
