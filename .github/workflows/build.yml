@@ -5,7 +5,7 @@ on:
       app_name:
         description: 'Nama Aplikasi'
         required: true
-        default: 'Aplikasi Ku'
+        default: 'AplikasiKu'
       app_url:
         description: 'URL Website'
         required: true
@@ -15,27 +15,38 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
       
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Build Android App via Capacitor
+      - name: Install & Build Android
         run: |
           mkdir myapp && cd myapp
           npm init -y
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npm install @capacitor/core
+          npm install -D @capacitor/cli
           
-          # Konfigurasi Capacitor untuk me-load website kamu sebagai Aplikasi (WebView native)
+          # Membuat folder web dasar
+          mkdir www
+          echo "Memuat Aplikasi..." > www/index.html
+          
+          # Setup Capacitor
+          npx cap init "${{ github.event.inputs.app_name }}" "com.web2apk.studio" --web-dir www
+          
+          # Hubungkan APK ke URL Web Kamu
           cat <<EOF > capacitor.config.json
           {
-            "appId": "com.web2apk.app",
+            "appId": "com.web2apk.studio",
             "appName": "${{ github.event.inputs.app_name }}",
             "webDir": "www",
             "server": {
@@ -45,17 +56,15 @@ jobs:
           }
           EOF
           
-          mkdir www && echo "Loading..." > www/index.html
+          # Tambah sistem Android dan Compile APK
+          npm install @capacitor/android
           npx cap add android
-          npx cap sync android
-          
-          # Mulai proses Build Gradle (Membuat APK)
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload Hasil APK
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.app_name }}-APK
           path: myapp/android/app/build/outputs/apk/debug/app-debug.apk
